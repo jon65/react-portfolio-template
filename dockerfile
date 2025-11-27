@@ -24,6 +24,9 @@ ENV NEXT_TELEMETRY_DISABLED 1
 # Build the application
 RUN npm run build
 
+# Verify standalone output was created
+RUN test -d .next/standalone || (echo "Error: .next/standalone not found" && ls -la .next/ && exit 1)
+
 # Stage 3: Runner (Production)
 FROM node:16-alpine AS runner
 WORKDIR /app
