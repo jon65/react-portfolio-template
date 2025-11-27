@@ -1,0 +1,84 @@
+name: Deploy to Production
+
+on:
+    # Trigger after staging deployment completes successfully
+    workflow_run:
+        workflows: ["Deploy to Staging"]
+        types:
+            - completed
+        branches:
+            - main
+    # Allow manual triggering for production deployments
+    workflow_dispatch:
+
+jobs:
+    deploy-production:
+        name: Deploy to Production
+        runs-on: ubuntu-latest
+        # Only run if the triggering workflow succeeded
+        if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+        environment:
+            name: production
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  # If triggered by workflow_run, use that commit; otherwise use current branch
+                  ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+            
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '16'
+                  cache: 'npm'
+            
+            - name: Install dependencies
+              run: npm ci --legacy-peer-deps
+            
+            - name: Build application
+              run: npm run build
+              env:
+                  NODE_ENV: production
+            
+            - name: Copy files to production EC2
+              uses: appleboy/scp-action@v0.1.4
+              with:
+                  host: ${{ secrets.EC2_HOST }}
+                  username: ${{ secrets.EC2_USER }}
+                  key: ${{ secrets.EC2_SSH_KEY }}
+                  port: ${{ secrets.EC2_PORT || 22 }}
+                  source: "."
+                  target: "/home/${{ secrets.EC2_USER }}/app"
+                  strip_components: 0
+                  exclude: |
+                      .git
+                      .github
+                      node_modules
+                      .env.local
+                      .env*.local
+            
+            - name: Deploy to production
+              uses: appleboy/ssh-action@v0.1.5
+              with:
+                  host: ${{ secrets.EC2_HOST }}
+                  username: ${{ secrets.EC2_USER }}
+                  key: ${{ secrets.EC2_SSH_KEY }}
+                  port: ${{ secrets.EC2_PORT || 22 }}
+                  script: |
+                      cd /home/${{ secrets.EC2_USER }}/app
+                      docker-compose down || true
+                      docker-compose up -d --build
+                      docker image prune -f
+                      docker-compose ps
+            
+            - name: Health check production
+              uses: appleboy/ssh-action@v0.1.5
+              with:
+                  host: ${{ secrets.EC2_HOST }}
+                  username: ${{ secrets.EC2_USER }}
+                  key: ${{ secrets.EC2_SSH_KEY }}
+                  port: ${{ secrets.EC2_PORT || 22 }}
+                  script: |
+                      sleep 10
+                      curl -f http://localhost:3000 || exit 1
+

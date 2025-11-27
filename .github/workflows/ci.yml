@@ -1,0 +1,161 @@
+name: CI - Build and Test
+
+on:
+    push:
+        branches:
+            - main
+            - '**'  # Run on all branches
+    pull_request:
+        branches:
+            - main
+    workflow_dispatch:
+
+jobs:
+    # BUILD PHASE: Compile code and dependencies
+    build:
+        name: Build
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+            
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '16'
+                  cache: 'npm'
+            
+            - name: Install dependencies
+              run: npm ci --legacy-peer-deps
+            
+            - name: Build application
+              run: npm run build
+              env:
+                  NODE_ENV: production
+            
+            - name: Upload build artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: build-artifacts
+                  path: |
+                      .next
+                      public
+                      package.json
+                      package-lock.json
+                      next.config.js
+                      dockerfile
+                      docker-compose.yml
+                  retention-days: 7
+
+    # TEST PHASE: Test build artifacts
+    test:
+        name: Test
+        runs-on: ubuntu-latest
+        needs: build
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+            
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '16'
+                  cache: 'npm'
+            
+            - name: Download build artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: build-artifacts
+                  path: .
+            
+            - name: Install dependencies
+              run: npm ci --legacy-peer-deps
+            
+            - name: Run linter
+              run: npm run lint
+              continue-on-error: true
+            
+            - name: Run tests
+              run: npm run test || echo "No tests configured"
+              continue-on-error: true
+
+    # DOCKER BUILD AND TEST PHASE: Build Docker image and test in containerized environment
+    docker-test:
+        name: Docker Build and Test
+        runs-on: ubuntu-latest
+        needs: build
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+            
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+            
+            - name: Download build artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: build-artifacts
+                  path: .
+            
+            - name: Build Docker image
+              uses: docker/build-push-action@v5
+              with:
+                  context: .
+                  file: ./dockerfile
+                  push: false
+                  tags: react-portfolio:test
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+            
+            - name: Verify Docker image
+              run: |
+                  docker images react-portfolio:test
+                  docker inspect react-portfolio:test
+            
+            - name: Start Docker containers
+              run: |
+                  # Use docker-compose to start services in test environment
+                  docker-compose up -d --build
+                  
+            - name: Wait for services to be healthy
+              run: |
+                  echo "Waiting for application to start..."
+                  timeout 60 bash -c 'until curl -f http://localhost:3000; do sleep 2; done' || exit 1
+                  echo "Application is healthy!"
+            
+            - name: Test application endpoints
+              run: |
+                  # Test root endpoint
+                  curl -f http://localhost:3000 || exit 1
+                  
+                  # Test that the app returns HTML
+                  response=$(curl -s http://localhost:3000)
+                  if [[ -z "$response" ]]; then
+                      echo "Error: Application returned empty response"
+                      exit 1
+                  fi
+                  
+                  # Check for common Next.js indicators
+                  if echo "$response" | grep -q "<!DOCTYPE html\|<html"; then
+                      echo "✓ Application is serving HTML correctly"
+                  else
+                      echo "Warning: Response may not be valid HTML"
+                  fi
+            
+            - name: Check container logs
+              if: always()
+              run: |
+                  echo "=== Container Logs ==="
+                  docker-compose logs --tail=50
+                  
+            - name: Check container status
+              if: always()
+              run: |
+                  echo "=== Container Status ==="
+                  docker-compose ps
+                  
+            - name: Cleanup Docker containers
+              if: always()
+              run: |
+                  docker-compose down -v
+                  docker image prune -f
