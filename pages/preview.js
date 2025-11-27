@@ -1,25 +1,57 @@
-import { useRef } from "react";
+import { useRef, useEffect, useState } from "react";
 import Header from "../components/Header";
 import ServiceCard from "../components/ServiceCard";
-import Socials from "../components/Socials";
 import WorkCard from "../components/WorkCard";
 import { useIsomorphicLayoutEffect } from "../utils";
 import { stagger } from "../animations";
 import Footer from "../components/Footer";
 import Head from "next/head";
 import Cursor from "../components/Cursor";
+import { useRouter } from "next/router";
+import Button from "../components/Button";
+import { useTheme } from "next-themes";
 
-// Local Data
-import data from "../data/portfolio.json";
+// Default data fallback
+import defaultData from "../data/portfolio.json";
 
-export default function Home() {
-  // Ref
+export default function Preview() {
+  const router = useRouter();
+  const { theme } = useTheme();
+  const [data, setData] = useState(defaultData);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // Refs
   const workRef = useRef();
   const aboutRef = useRef();
   const textOne = useRef();
   const textTwo = useRef();
   const textThree = useRef();
   const textFour = useRef();
+
+  useEffect(() => {
+    // Check authentication first
+    const authStatus = sessionStorage.getItem("adminAuthenticated");
+    if (authStatus !== "true") {
+      // Not authenticated, redirect to admin login
+      router.push("/admin");
+      return;
+    }
+    
+    setIsAuthenticated(true);
+    
+    // Get preview data from sessionStorage
+    const previewData = sessionStorage.getItem("previewData");
+    if (previewData) {
+      try {
+        const parsedData = JSON.parse(previewData);
+        setData(parsedData);
+      } catch (error) {
+        console.error("Error parsing preview data:", error);
+      }
+    }
+    setIsLoading(false);
+  }, [router]);
 
   // Handling Scroll
   const handleWorkScroll = () => {
@@ -39,24 +71,52 @@ export default function Home() {
   };
 
   useIsomorphicLayoutEffect(() => {
-    stagger(
-      [textOne.current, textTwo.current, textThree.current, textFour.current],
-      { y: 40, x: -10, transform: "scale(0.95) skew(10deg)" },
-      { y: 0, x: 0, transform: "scale(1)" }
+    if (!isLoading) {
+      stagger(
+        [textOne.current, textTwo.current, textThree.current, textFour.current],
+        { y: 40, x: -10, transform: "scale(0.95) skew(10deg)" },
+        { y: 0, x: 0, transform: "scale(1)" }
+      );
+    }
+  }, [isLoading]);
+
+  // Show loading or redirect if not authenticated
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className={`flex items-center justify-center min-h-screen ${theme === "dark" ? "bg-black" : "bg-white"}`}>
+        <div className="text-center">
+          <p className="text-lg mb-4">Checking authentication...</p>
+          <p className="text-sm opacity-50">Redirecting to admin panel if not authenticated...</p>
+        </div>
+      </div>
     );
-  }, []);
+  }
 
   return (
     <div className={`relative ${data.showCursor && "cursor-none"}`}>
       {data.showCursor && <Cursor />}
       <Head>
-        <title>{data.name}</title>
+        <title>{data.name} - Preview</title>
       </Head>
+
+      {/* Preview Banner */}
+      <div className="fixed top-0 left-0 right-0 bg-yellow-500 text-black text-center py-2 z-50">
+        <div className="container mx-auto flex items-center justify-between px-4">
+          <span className="font-bold">PREVIEW MODE - This is how your site will look</span>
+          <Button 
+            onClick={() => router.push("/admin")} 
+            type="primary"
+            classes="bg-black text-white hover:bg-gray-800"
+          >
+            Back to Admin
+          </Button>
+        </div>
+      </div>
 
       <div className="gradient-circle"></div>
       <div className="gradient-circle-bottom"></div>
 
-      <div className="container mx-auto mb-10">
+      <div className="container mx-auto mb-10 pt-12">
         <Header
           handleWorkScroll={handleWorkScroll}
           handleAboutScroll={handleAboutScroll}
@@ -89,7 +149,13 @@ export default function Home() {
             </h1>
           </div>
 
-          <Socials className="mt-2 laptop:mt-5" />
+          <div className="mt-2 laptop:mt-5 flex flex-wrap mob:flex-nowrap link">
+            {data.socials.map((social, index) => (
+              <Button key={index} onClick={() => window.open(social.link)}>
+                {social.title}
+              </Button>
+            ))}
+          </div>
         </div>
         <div className="mt-10 laptop:mt-30 p-2 laptop:p-0" ref={workRef}>
           <h1 className="text-2xl text-bold">Work.</h1>
@@ -130,3 +196,4 @@ export default function Home() {
     </div>
   );
 }
+

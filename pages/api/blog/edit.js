@@ -17,13 +17,21 @@ export default function handler(req, res) {
           image,
         }),
         "utf-8",
-        (err) => console.log(err)
+        (err) => {
+          if (err) {
+            console.error("Error saving blog post:", err);
+            res.status(500).json({ status: "ERROR", message: "Failed to save blog post" });
+          } else {
+            res.status(200).json({ status: "DONE" });
+          }
+        }
       );
-      res.status(200).json({ status: "DONE" });
     } else {
       res
         .status(200)
         .json({ name: "This route works in development mode only" });
     }
+  } else {
+    res.status(403).json({ message: "This route works in development mode only" });
   }
 }

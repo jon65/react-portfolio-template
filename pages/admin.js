@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import Button from "../components/Button";
-import Header from "../components/Header";
 import { v4 as uuidv4 } from "uuid";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/router";
@@ -9,53 +8,100 @@ import { useRouter } from "next/router";
 import yourData from "../data/portfolio.json";
 import Cursor from "../components/Cursor";
 
-const Edit = () => {
+const Admin = () => {
   const router = useRouter();
-  // states
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState("");
   const [data, setData] = useState(yourData);
   const [currentTabs, setCurrentTabs] = useState("HEADER");
+  const [isPublishing, setIsPublishing] = useState(false);
   const { theme } = useTheme();
 
-  // Always redirect to admin page - edit functionality is only available through admin
+  // Check if already authenticated (stored in sessionStorage)
   useEffect(() => {
-    router.push("/admin");
-  }, [router]);
+    const authStatus = sessionStorage.getItem("adminAuthenticated");
+    if (authStatus === "true") {
+      setIsAuthenticated(true);
+    }
+  }, []);
 
-  // Don't render edit interface - always redirect to admin
-  return (
-    <div className={`container mx-auto min-h-screen flex items-center justify-center ${theme === "dark" ? "bg-black" : "bg-white"}`}>
-      <div className={`p-8 rounded-lg shadow-lg text-center ${theme === "dark" ? "bg-gray-800" : "bg-gray-100"}`}>
-        <h1 className="text-2xl font-bold mb-4">Edit functionality is only available through the admin panel</h1>
-        <p className="mb-6">Redirecting to admin panel...</p>
-        <Button onClick={() => router.push("/admin")} type="primary">
-          Go to Admin Panel
-        </Button>
-      </div>
-    </div>
-  );
+  const handleLogin = async () => {
+    // In a real app, you'd verify this with the server
+    // For now, we'll use a simple check
+    const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123";
+    
+    if (password === adminPassword) {
+      setIsAuthenticated(true);
+      sessionStorage.setItem("adminAuthenticated", "true");
+      setPassword("");
+    } else {
+      alert("Invalid password. Please try again.");
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    sessionStorage.removeItem("adminAuthenticated");
+    router.push("/");
+  };
 
   const saveData = async () => {
-    if (process.env.NODE_ENV === "development") {
-      try {
-        const response = await fetch("/api/portfolio", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(data),
-        });
-        const result = await response.json();
-        if (response.ok) {
-          alert("Portfolio saved successfully!");
-        } else {
-          alert(`Error: ${result.message || "Failed to save portfolio"}`);
-        }
-      } catch (error) {
-        console.error("Error saving portfolio:", error);
-        alert("Failed to save portfolio. Please check the console for details.");
+    try {
+      const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123";
+      const response = await fetch("/api/portfolio", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-password": adminPassword,
+        },
+        body: JSON.stringify({ data }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        alert("Portfolio saved successfully!");
+      } else {
+        alert(`Error: ${result.message || "Failed to save portfolio"}`);
       }
-    } else {
-      alert("This thing only works in development mode.");
+    } catch (error) {
+      console.error("Error saving portfolio:", error);
+      alert("Failed to save portfolio. Please check the console for details.");
+    }
+  };
+
+  const previewPage = () => {
+    // Store current draft data in sessionStorage for preview
+    sessionStorage.setItem("previewData", JSON.stringify(data));
+    // Open preview in new tab
+    window.open("/preview", "_blank");
+  };
+
+  const publishToProduction = async () => {
+    if (!confirm("Are you sure you want to publish these changes to production? This action cannot be undone.")) {
+      return;
+    }
+
+    setIsPublishing(true);
+    try {
+      const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123";
+      const response = await fetch("/api/admin/publish", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-password": adminPassword,
+        },
+        body: JSON.stringify({ data }),
+      });
+      const result = await response.json();
+      if (response.ok) {
+        alert("Portfolio published to production successfully!");
+      } else {
+        alert(`Error: ${result.message || "Failed to publish portfolio"}`);
+      }
+    } catch (error) {
+      console.error("Error publishing portfolio:", error);
+      alert("Failed to publish portfolio. Please check the console for details.");
+    } finally {
+      setIsPublishing(false);
     }
   };
 
@@ -77,7 +123,6 @@ const Edit = () => {
           description: "Web Design & Development",
           imageSrc:
             "https://images.unsplash.com/photo-1517479149777-5f3b1511d5ad?ixlib=rb-1.2.1&ixid=MXwxMjA3fDB8MHxzZWFyY2h8MTAyfHxwYXN0ZWx8ZW58MHx8MHw%3D&auto=format&fit=crop&w=400&q=60",
-
           url: "http://chetanverma.com/",
         },
       ],
@@ -85,13 +130,11 @@ const Edit = () => {
   };
 
   const deleteProject = (id) => {
-    const copyProjects = data.projects;
-    copyProjects = copyProjects.filter((project) => project.id !== id);
+    const copyProjects = data.projects.filter((project) => project.id !== id);
     setData({ ...data, projects: copyProjects });
   };
 
   // Services Handler
-
   const editServices = (serviceIndex, editService) => {
     let copyServices = data.services;
     copyServices[serviceIndex] = { ...editService };
@@ -114,13 +157,11 @@ const Edit = () => {
   };
 
   const deleteService = (id) => {
-    const copyServices = data.services;
-    copyServices = copyServices.filter((service) => service.id !== id);
+    const copyServices = data.services.filter((service) => service.id !== id);
     setData({ ...data, services: copyServices });
   };
 
   // Socials Handler
-
   const editSocials = (socialIndex, editSocial) => {
     let copySocials = data.socials;
     copySocials[socialIndex] = { ...editSocial };
@@ -142,13 +183,11 @@ const Edit = () => {
   };
 
   const deleteSocials = (id) => {
-    const copySocials = data.socials;
-    copySocials = copySocials.filter((social) => social.id !== id);
+    const copySocials = data.socials.filter((social) => social.id !== id);
     setData({ ...data, socials: copySocials });
   };
 
   // Resume
-
   const handleAddExperiences = () => {
     setData({
       ...data,
@@ -177,22 +216,62 @@ const Edit = () => {
     });
   };
 
+  // Login form
+  if (!isAuthenticated) {
+    return (
+      <div className={`container mx-auto min-h-screen flex items-center justify-center ${theme === "dark" ? "bg-black" : "bg-white"}`}>
+        <div className={`p-8 rounded-lg shadow-lg ${theme === "dark" ? "bg-gray-800" : "bg-gray-100"}`}>
+          <h1 className="text-3xl font-bold mb-6">Admin Login</h1>
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyPress={(e) => e.key === "Enter" && handleLogin()}
+              className={`w-full p-3 rounded-md border-2 ${
+                theme === "dark" ? "bg-gray-700 border-gray-600" : "bg-white border-gray-300"
+              }`}
+              placeholder="Enter admin password"
+            />
+          </div>
+          <Button onClick={handleLogin} type="primary" classes="w-full">
+            Login
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`container mx-auto ${data.showCursor && "cursor-none"}`}>
-      <Header isBlog></Header>
       {data.showCursor && <Cursor />}
       <div className="mt-10">
         <div className={`${theme === "dark" ? "bg-transparent" : "bg-white"}`}>
           <div className="flex items-center justify-between">
-            <h1 className="text-4xl">Dashboard</h1>
-            <div className="flex items-center">
+            <h1 className="text-4xl">Admin Dashboard</h1>
+            <div className="flex items-center gap-2">
+              <Button onClick={previewPage} type="primary" classes="bg-blue-600 hover:bg-blue-700 text-white">
+                Preview
+              </Button>
               <Button onClick={saveData} type="primary">
-                Save
+                Save Draft
+              </Button>
+              <Button 
+                onClick={publishToProduction} 
+                type="primary"
+                classes="bg-green-600 hover:bg-green-700 text-white"
+                disabled={isPublishing}
+              >
+                {isPublishing ? "Publishing..." : "Publish to Production"}
+              </Button>
+              <Button onClick={handleLogout} classes="bg-red-500 text-white hover:bg-red-600">
+                Logout
               </Button>
             </div>
           </div>
 
-          <div className="flex items-center">
+          <div className="flex items-center flex-wrap">
             <Button
               onClick={() => setCurrentTabs("HEADER")}
               type={currentTabs === "HEADER" && "primary"}
@@ -529,48 +608,46 @@ const Edit = () => {
         {currentTabs === "SOCIAL" && (
           <div className="mt-10">
             {data.socials.map((social, index) => (
-              <>
-                <div key={social.id}>
-                  <div className="flex items-center justify-between">
-                    <h1 className="text-2xl">{social.title}</h1>
-                    <Button
-                      onClick={() => deleteSocials(social.id)}
-                      type="primary"
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                  <div className="flex items-center mt-5">
-                    <label className="w-1/5 text-lg opacity-50">Title</label>
-                    <input
-                      value={social.title}
-                      onChange={(e) =>
-                        editSocials(index, {
-                          ...social,
-                          title: e.target.value,
-                        })
-                      }
-                      className="w-4/5 ml-10 p-2 rounded-md shadow-lg border-2"
-                      type="text"
-                    ></input>
-                  </div>
-                  <div className="flex items-center mt-5">
-                    <label className="w-1/5 text-lg opacity-50">Link</label>
-                    <input
-                      value={social.link}
-                      onChange={(e) =>
-                        editSocials(index, {
-                          ...social,
-                          link: e.target.value,
-                        })
-                      }
-                      className="w-4/5 ml-10 p-2 rounded-md shadow-lg border-2"
-                      type="text"
-                    />
-                  </div>
-                  <hr className="my-10"></hr>
+              <div key={social.id}>
+                <div className="flex items-center justify-between">
+                  <h1 className="text-2xl">{social.title}</h1>
+                  <Button
+                    onClick={() => deleteSocials(social.id)}
+                    type="primary"
+                  >
+                    Delete
+                  </Button>
                 </div>
-              </>
+                <div className="flex items-center mt-5">
+                  <label className="w-1/5 text-lg opacity-50">Title</label>
+                  <input
+                    value={social.title}
+                    onChange={(e) =>
+                      editSocials(index, {
+                        ...social,
+                        title: e.target.value,
+                      })
+                    }
+                    className="w-4/5 ml-10 p-2 rounded-md shadow-lg border-2"
+                    type="text"
+                  ></input>
+                </div>
+                <div className="flex items-center mt-5">
+                  <label className="w-1/5 text-lg opacity-50">Link</label>
+                  <input
+                    value={social.link}
+                    onChange={(e) =>
+                      editSocials(index, {
+                        ...social,
+                        link: e.target.value,
+                      })
+                    }
+                    className="w-4/5 ml-10 p-2 rounded-md shadow-lg border-2"
+                    type="text"
+                  />
+                </div>
+                <hr className="my-10"></hr>
+              </div>
             ))}
             <div className="my-10">
               <Button onClick={addSocials} type="primary">
@@ -617,12 +694,7 @@ const Edit = () => {
                 <div className="mt-5" key={experiences.id}>
                   <div className="flex items-center justify-between">
                     <h1 className="text-2xl">{experiences.position}</h1>
-                    <Button
-                      // onClick={() => deleteProject(project.id)}
-                      type="primary"
-                    >
-                      Delete
-                    </Button>
+                    <Button type="primary">Delete</Button>
                   </div>
 
                   <div className="flex items-center mt-5">
@@ -939,4 +1011,5 @@ const Edit = () => {
   );
 };
 
-export default Edit;
+export default Admin;
+
