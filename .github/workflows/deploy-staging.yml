@@ -1,6 +1,13 @@
 name: Deploy to Staging
 
 on:
+    push:
+        branches:
+            - main
+            - '**'  # Run on all branches
+    pull_request:
+        branches:
+            - main
     workflow_dispatch:
 
 jobs:
