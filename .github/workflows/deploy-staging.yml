@@ -1,12 +1,6 @@
 name: Deploy to Staging
 
 on:
-    workflow_run:
-        workflows: ["CI - Build and Test"]
-        types:
-            - completed
-        branches:
-            - main
     workflow_dispatch:
 
 jobs:
