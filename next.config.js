@@ -6,4 +6,9 @@ const nextConfig = {
   output: 'standalone',
 }
 
+// Verify the config is correct
+if (process.env.NODE_ENV === 'production') {
+  console.log('Next.js config loaded:', JSON.stringify(nextConfig, null, 2));
+}
+
 module.exports = nextConfig

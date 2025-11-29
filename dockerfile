@@ -16,16 +16,61 @@ WORKDIR /app
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
+
+# Copy package files and config first
+COPY package.json package-lock.json* ./
+COPY next.config.js ./
+
+# Copy all source files
 COPY . .
 
 # Set environment variables for build
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
+# Verify next.config.js has standalone output configured
+RUN echo "=== Verifying next.config.js ===" && \
+    cat next.config.js && \
+    (grep -q "output.*standalone" next.config.js || grep -q "output: 'standalone'" next.config.js) && \
+    echo "✓ Standalone output configured in next.config.js"
+
+# Verify config is being read before build
+RUN echo "=== Testing next.config.js ===" && \
+    node -e "const config = require('./next.config.js'); console.log('Config output:', config.output); console.log('Full config:', JSON.stringify(config, null, 2));" && \
+    echo "✓ Config loaded successfully"
 
 # Build the application
 RUN npm run build
 
+# Debug: Check what was created
+RUN echo "=== Checking .next directory structure ===" && \
+    ls -la .next/ && \
+    echo "" && \
+    echo "=== Checking for standalone ===" && \
+    (test -d .next/standalone && (echo "✓ standalone directory found" && ls -la .next/standalone/) || echo "✗ standalone directory NOT found") && \
+    echo "" && \
+    echo "=== Checking for server ===" && \
+    (test -d .next/server && (echo "✓ server directory found" && ls -la .next/server/) || echo "✗ server directory NOT found")
+
 # Verify standalone output was created
-RUN test -d .next/standalone || (echo "Error: .next/standalone not found" && ls -la .next/ && exit 1)
+RUN if [ ! -d .next/standalone ]; then \
+        echo "ERROR: .next/standalone not found after build!"; \
+        echo "This usually means:"; \
+        echo "  1. next.config.js doesn't have 'output: \"standalone\"'"; \
+        echo "  2. Next.js version doesn't support standalone output"; \
+        echo "  3. Build failed silently"; \
+        echo ""; \
+        echo "Checking Next.js version:"; \
+        npm list next || true; \
+        echo ""; \
+        echo "Checking if config was read:"; \
+        node -e "const config = require('./next.config.js'); console.log('Config:', JSON.stringify(config, null, 2));" || true; \
+        exit 1; \
+    else \
+        echo "✓ Standalone output verified"; \
+        echo "Contents of .next/standalone:"; \
+        ls -la .next/standalone/; \
+    fi
 
 # Stage 3: Runner (Production)
 FROM node:16-alpine AS runner
