@@ -14,14 +14,14 @@ jobs:
     deploy-staging:
         name: Deploy to Staging
         runs-on: ubuntu-latest
-        if: ${{ github.event.workflow_run.conclusion == 'success' }}
+        if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
         environment:
             name: staging
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
               with:
-                  ref: ${{ github.event.workflow_run.head_sha }}
+                  ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
             - name: Setup Node.js
               uses: actions/setup-node@v4
