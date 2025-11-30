@@ -36,26 +36,26 @@ jobs:
               run: npm ci --legacy-peer-deps
             
             - name: Build application
-              run: npm run build
-              env:
-                  NODE_ENV: production
+                run: npm run build
+                env:
+                    NODE_ENV: production
+            
+            - name: Prepare files for deployment
+                run: |
+                    # Remove files/directories that shouldn't be deployed
+                    rm -rf .git .github node_modules
+                    find . -name ".env*.local" -type f -delete || true
             
             - name: Copy files to production EC2
-              uses: appleboy/scp-action@v0.1.4
-              with:
-                  host: ${{ secrets.EC2_HOST }}
-                  username: ${{ secrets.EC2_USER }}
-                  key: ${{ secrets.EC2_SSH_KEY }}
-                  port: ${{ secrets.EC2_PORT || 22 }}
-                  source: "."
-                  target: "/home/${{ secrets.EC2_USER }}/app"
-                  strip_components: 0
-                  exclude: |
-                      .git
-                      .github
-                      node_modules
-                      .env.local
-                      .env*.local
+                uses: appleboy/scp-action@v0.1.4
+                with:
+                    host: ${{ secrets.EC2_HOST }}
+                    username: ${{ secrets.EC2_USER }}
+                    key: ${{ secrets.EC2_SSH_KEY }}
+                    port: ${{ secrets.EC2_PORT || 22 }}
+                    source: "."
+                    target: "/home/${{ secrets.EC2_USER }}/app"
+                    strip_components: 0
             
             - name: Deploy to production
               uses: appleboy/ssh-action@v0.1.5

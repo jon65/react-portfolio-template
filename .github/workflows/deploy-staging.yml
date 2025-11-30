@@ -37,6 +37,23 @@ jobs:
               env:
                   NODE_ENV: production
 
+            - name: Prepare files for deployment
+              run: |
+                  # Remove files/directories that shouldn't be deployed
+                  rm -rf .git .github node_modules
+                  find . -name ".env*.local" -type f -delete || true
+
+            - name: Verify SSH key
+              run: |
+                  if [ -z "${{ secrets.STAGING_EC2_SSH_KEY }}" ]; then
+                      echo "Error: STAGING_EC2_SSH_KEY secret is not set"
+                      exit 1
+                  fi
+                  # Check if key starts with proper header
+                  echo "${{ secrets.STAGING_EC2_SSH_KEY }}" | head -1 | grep -q "BEGIN.*PRIVATE KEY" || {
+                      echo "Warning: SSH key may not be in correct format (should start with -----BEGIN ... PRIVATE KEY-----)"
+                  }
+
             - name: Copy files to staging EC2
               uses: appleboy/scp-action@v0.1.4
               with:
@@ -47,12 +64,6 @@ jobs:
                   source: "."
                   target: "/home/ubuntu/app-staging"
                   strip_components: 0
-                  exclude: |
-                      .git
-                      .github
-                      node_modules
-                      .env.local
-                      .env*.local
 
             - name: Deploy to staging
               uses: appleboy/ssh-action@v0.1.5
