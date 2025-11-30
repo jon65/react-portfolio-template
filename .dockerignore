@@ -1,55 +1,57 @@
-# Multi-stage build for optimized image size
+# Dependencies (will be installed in container)
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Stage 1: Dependencies
-FROM node:16-alpine AS deps
-WORKDIR /app
+# Build outputs (will be generated in container)
+.next
+out
+dist
+build
 
-# Copy package files
-COPY package.json package-lock.json* ./
+# Environment files
+.env
+.env.local
+.env*.local
+.env.development
+.env.production
 
-# Install dependencies
-RUN npm ci --legacy-peer-deps
+# Git
+.git
+.gitignore
 
-# Stage 2: Builder
-FROM node:16-alpine AS builder
-WORKDIR /app
+# CI/CD (not needed in container)
+.github
 
-# Copy dependencies from deps stage
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
 
-# Set environment variables for build
-ENV NEXT_TELEMETRY_DISABLED 1
+# OS
+.DS_Store
+Thumbs.db
 
-# Build the application
-RUN npm run build
+# Documentation (not needed in container)
+README.md
+DEPLOYMENT.md
 
-# Stage 3: Runner (Production)
-FROM node:16-alpine AS runner
-WORKDIR /app
+# Docker files (not needed in container)
+docker-compose.yml
+.dockerignore
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+# Scripts (not needed in container)
+scripts
 
-# Create a non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+# Test files (not needed in production)
+**/*.test.js
+**/*.test.ts
+**/*.spec.js
+**/*.spec.ts
 
-# Copy necessary files from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
-
-# Copy built application
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-# Switch to non-root user
-USER nextjs
-
-# Expose port
-EXPOSE 3000
-
-ENV PORT 3000
-
-# Start the application
-CMD ["node", "server.js"]
+# Misc
+*.log
+.cache

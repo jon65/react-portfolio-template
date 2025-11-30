@@ -1,4 +1,4 @@
-name: Deploy to Production
+name: Deploy without build
 
 on:
     # Trigger after staging deployment completes successfully
@@ -15,6 +15,7 @@ jobs:
     deploy-production:
         name: Deploy to Production
         runs-on: ubuntu-latest
+        timeout-minutes: 35
         # Only run if the triggering workflow succeeded
         if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
         environment:
@@ -26,38 +27,18 @@ jobs:
                   # If triggered by workflow_run, use that commit; otherwise use current branch
                   ref: ${{ github.event.workflow_run.head_sha || github.ref }}
             
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: '16'
-                  cache: 'npm'
-            
-            - name: Install dependencies
-              run: npm ci --legacy-peer-deps
-            
-            - name: Build application
-                run: npm run build
-                env:
-                    NODE_ENV: production
-            
-            - name: Prepare files for deployment
-                run: |
-                    # Remove files/directories that shouldn't be deployed
-                    rm -rf .git .github node_modules
-                    find . -name ".env*.local" -type f -delete || true
-            
             - name: Copy files to production EC2
-                uses: appleboy/scp-action@v0.1.4
-                with:
-                    host: ${{ secrets.EC2_HOST }}
-                    username: ${{ secrets.EC2_USER }}
-                    key: ${{ secrets.EC2_SSH_KEY }}
-                    port: ${{ secrets.EC2_PORT || 22 }}
-                    source: "."
-                    target: "/home/${{ secrets.EC2_USER }}/app"
-                    strip_components: 0
+              uses: appleboy/scp-action@v0.1.4
+              with:
+                  host: ${{ secrets.EC2_HOST }}
+                  username: ${{ secrets.EC2_USER }}
+                  key: ${{ secrets.EC2_SSH_KEY }}
+                  port: ${{ secrets.EC2_PORT || 22 }}
+                  source: "."
+                  target: "/home/${{ secrets.EC2_USER }}/app-production"
+                  strip_components: 0
             
-            - name: Deploy to production
+            - name: Build and deploy to production
               uses: appleboy/ssh-action@v0.1.5
               with:
                   host: ${{ secrets.EC2_HOST }}
@@ -66,10 +47,25 @@ jobs:
                   port: ${{ secrets.EC2_PORT || 22 }}
                   command_timeout: 30m
                   script: |
-                      cd /home/${{ secrets.EC2_USER }}/app
+                      cd /home/${{ secrets.EC2_USER }}/app-production
+                      
+                      # Pull latest changes if it's a git repo
+                      git pull origin main 2>/dev/null || echo "Not a git repo, using copied files"
+                      
+                      # Build and deploy with Docker
+                      echo "=== Stopping existing containers ==="
                       docker-compose down || true
-                      docker-compose up -d --build
+                      
+                      echo "=== Building Docker image on EC2 ==="
+                      docker-compose build --no-cache
+                      
+                      echo "=== Starting containers ==="
+                      docker-compose up -d
+                      
+                      echo "=== Cleaning up old images ==="
                       docker image prune -f
+                      
+                      echo "=== Current running containers ==="
                       docker-compose ps
             
             - name: Health check production
@@ -80,6 +76,10 @@ jobs:
                   key: ${{ secrets.EC2_SSH_KEY }}
                   port: ${{ secrets.EC2_PORT || 22 }}
                   script: |
-                      sleep 10
+                      echo "Waiting for application to start..."
+                      sleep 15
+                      
+                      echo "Running health check..."
                       curl -f http://localhost:3000 || exit 1
-
+                      
+                      echo "✅ Production deployment successful!"

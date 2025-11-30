@@ -101,15 +101,15 @@ jobs:
             
             - name: Build Docker image
               uses: docker/build-push-action@v5
+              timeout-minutes: 20
               with:
                   context: .
                   file: ./dockerfile
                   push: false
                   tags: react-portfolio:test
-                  # Cache disabled to avoid stale cache referencing non-existent .next/standalone
-                  # Re-enable after first successful build by uncommenting below:
-                  # cache-from: type=gha
-                  # cache-to: type=gha,mode=max
+                  # Enable cache to speed up builds
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
             
             - name: Verify Docker image
               run: |
